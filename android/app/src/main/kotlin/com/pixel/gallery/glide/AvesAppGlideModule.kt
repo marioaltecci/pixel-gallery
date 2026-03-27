@@ -6,10 +6,8 @@ import android.text.format.Formatter
 import android.util.Log
 import com.bumptech.glide.Glide
 import com.bumptech.glide.GlideBuilder
-import com.bumptech.glide.Registry
 import com.bumptech.glide.annotation.GlideModule
 import com.bumptech.glide.load.DecodeFormat
-import com.bumptech.glide.load.ImageHeaderParser
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.engine.bitmap_recycle.BitmapPoolAdapter
 import com.bumptech.glide.load.engine.bitmap_recycle.LruArrayPool
@@ -18,22 +16,18 @@ import com.bumptech.glide.load.engine.cache.DiskCache
 import com.bumptech.glide.load.engine.cache.InternalCacheDiskCacheFactory
 import com.bumptech.glide.load.engine.cache.LruResourceCache
 import com.bumptech.glide.load.engine.cache.MemorySizeCalculator
-import com.bumptech.glide.load.resource.bitmap.ExifInterfaceImageHeaderParser
 import com.bumptech.glide.module.AppGlideModule
 import com.bumptech.glide.request.RequestOptions
 import com.pixel.gallery.utils.LogUtils
 import com.pixel.gallery.utils.MimeTypes
 import com.pixel.gallery.utils.MimeTypes.isVideo
 import com.pixel.gallery.utils.StorageUtils
-// import com.pixel.gallery.utils.compatRemoveIf // Helper missing in Lumina, using inline logic or manual loop
 
 @GlideModule
 class AvesAppGlideModule : AppGlideModule() {
     override fun applyOptions(context: Context, builder: GlideBuilder) {
-        // hide noisy warning (e.g. for images that can't be decoded)
         builder.setLogLevel(Log.ERROR)
 
-        // sizing
         val memorySizeCalculator = MemorySizeCalculator.Builder(context).build()
         builder.setMemorySizeCalculator(memorySizeCalculator)
         val size: Int = memorySizeCalculator.bitmapPoolSize
@@ -49,6 +43,14 @@ class AvesAppGlideModule : AppGlideModule() {
         val internalCacheDiskCacheFactory = InternalCacheDiskCacheFactory(context, DiskCache.Factory.DEFAULT_DISK_CACHE_DIR, diskCacheSize.toLong())
         builder.setDiskCache(internalCacheDiskCacheFactory)
 
+        // Оптимизация: RGB_565 вместо ARGB_8888 (экономия памяти)
+        val defaultOptions = RequestOptions()
+            .format(DecodeFormat.PREFER_RGB_565)
+            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .skipMemoryCache(false)
+        
+        builder.setDefaultRequestOptions(defaultOptions)
+
         fun toMb(bytes: Int) = Formatter.formatFileSize(context, bytes.toLong())
         Log.d(
             LOG_TAG, "Glide disk cache size=${toMb(diskCacheSize)}" +
@@ -58,30 +60,17 @@ class AvesAppGlideModule : AppGlideModule() {
         )
     }
 
-    override fun registerComponents(context: Context, glide: Glide, registry: Registry) {
-        // prevent ExifInterface error logs
-        // cf https://github.com/bumptech/glide/issues/3383
-        val parsersToRemove = registry.imageHeaderParsers.filter { it is ExifInterfaceImageHeaderParser }
-        parsersToRemove.forEach { registry.imageHeaderParsers.remove(it) }
-    }
-
     override fun isManifestParsingEnabled(): Boolean = false
 
     companion object {
         private val LOG_TAG = LogUtils.createTag<AvesAppGlideModule>()
 
-        // request a fresh image with the highest quality format
         val uncachedFullImageOptions = RequestOptions()
             .format(DecodeFormat.PREFER_ARGB_8888)
             .diskCacheStrategy(DiskCacheStrategy.NONE)
             .skipMemoryCache(true)
 
         fun getModel(context: Context, uri: Uri, mimeType: String, pageId: Int?, sizeBytes: Long? = null): Any {
-            /*if (pageId != null && MultiPageImage.isSupported(mimeType)) {
-                MultiPageImage(context, uri, mimeType, pageId)
-            } else if (mimeType == MimeTypes.TIFF) {
-                TiffImage(context, uri, pageId)
-            } else*/ 
             return if (mimeType == MimeTypes.SVG) {
                 SvgImage(context, uri)
             } else if (isVideo(mimeType)) {
