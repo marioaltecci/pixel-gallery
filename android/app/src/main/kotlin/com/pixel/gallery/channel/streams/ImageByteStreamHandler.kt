@@ -42,11 +42,16 @@ class ImageByteStreamHandler(private val context: Context, private val arguments
         val widthDip = (arguments["widthDip"] as Number?)?.toDouble()
         val heightDip = (arguments["heightDip"] as Number?)?.toDouble()
         val defaultSizeDip = (arguments["defaultSizeDip"] as Number?)?.toDouble()
-        val quality = arguments["quality"] as Int?
+        var quality = arguments["quality"] as Int?
 
-        if (uri == null || mimeType == null || rotationDegrees == null || isFlipped == null || widthDip == null || heightDip == null || defaultSizeDip == null || quality == null) {
+        if (uri == null || mimeType == null || rotationDegrees == null || isFlipped == null || widthDip == null || heightDip == null || defaultSizeDip == null) {
             error("getThumbnail-args", "missing arguments", null)
             return
+        }
+
+        // Оптимизация: снижаем качество для миниатюр (незаметно, но быстрее)
+        if (quality == null || quality > 80) {
+            quality = 80
         }
 
         val density = context.resources.displayMetrics.density
@@ -76,7 +81,7 @@ class ImageByteStreamHandler(private val context: Context, private val arguments
             while (inputStream.read(buffer).also { len = it } != -1) {
                 success(buffer.copyOfRange(0, len))
             }
-            success(202) // magic byte to signal end of encoded bytes
+            success(202)
             return true
         } catch (e: Exception) {
             error("streamBytes-exception", e.message, e.stackTraceToString())
